@@ -1,153 +1,180 @@
 import streamlit as st
 import datetime
 
-# -------------------------------------------------------------
-# Импорт модулей
-# -------------------------------------------------------------
+# Импорт модулей ядра и компонентов
 from core.calculator import compute_engine
 from components.checklist import render_checklist
 from components.trips_table import render_trips_input
 from components.optimizer import render_optimizer
 
-# Конфигурация страницы
 st.set_page_config(
-    page_title="CyPass.cy — Гражданство и статус резидента Кипра",
+    page_title="CyPass — Cyprus Naturalization Hub",
     page_icon="🇨🇾",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # -------------------------------------------------------------
-# СОВРЕМЕННЫЙ ДИЗАЙН И КАСТОМНЫЙ CSS
+# МИНИМАЛИСТИЧНЫЙ CSS (В СТИЛЕ TREBOIT / CLEAN SAAS)
 # -------------------------------------------------------------
 st.markdown("""
 <style>
-    /* Подключение чистого шрифта Inter */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
+    /* Базовая типографика */
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #1f2937;
     }
 
-    /* Фон рабочей области */
+    /* Чистый белый фон без темных подложек */
     .stApp {
-        background-color: #f8fafc;
+        background-color: #ffffff;
     }
 
-    /* Главный хедер */
-    .hero-header {
-        background: linear-gradient(135deg, #0d3b66 0%, #00509d 100%);
-        padding: 32px 36px;
-        border-radius: 16px;
-        color: white;
-        margin-bottom: 24px;
-        box-shadow: 0 10px 25px -5px rgba(13, 59, 102, 0.15);
-    }
-    .hero-header h1 {
-        color: white !important;
-        font-size: 2.1rem !important;
-        font-weight: 700 !important;
-        margin-bottom: 8px !important;
-    }
-    .hero-header p {
-        color: #e0eafc !important;
-        font-size: 1.05rem !important;
-        margin: 0 !important;
+    /* Убираем лишние верхние отступы Streamlit */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1100px;
     }
 
-    /* Карточки метрик и блоков */
-    .custom-card {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 22px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-        margin-bottom: 18px;
+    /* Лаконичный заголовок */
+    .brand-header {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid #f3f4f6;
     }
-
-    /* Стилизация табов (вкладок) */
-    .stTabs [data-baseweb="tab-list"] {
+    .brand-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #111827;
+        display: flex;
+        align-items: center;
         gap: 8px;
-        background-color: #edf2f7;
-        padding: 6px;
-        border-radius: 12px;
+        margin: 0;
+    }
+    .brand-subtitle {
+        font-size: 0.92rem;
+        color: #6b7280;
+        margin-top: 4px;
+        margin-bottom: 0;
+    }
+
+    /* Минималистичные плоские карточки с тонкой рамкой */
+    .minimal-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 12px;
+    }
+    .minimal-card-label {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .minimal-card-value {
+        font-size: 1.6rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 2px 0;
+    }
+    .minimal-card-sub {
+        font-size: 0.82rem;
+        color: #9ca3af;
+    }
+
+    /* Вкладки (Tabs): ультра-лаконичные, плоские */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 20px;
+        padding: 10px 4px 12px 4px;
+        font-size: 0.95rem;
         font-weight: 500;
-        color: #4a5568;
+        color: #6b7280;
         background-color: transparent;
         border: none !important;
+        border-bottom: 2px solid transparent !important;
+        border-radius: 0;
     }
     .stTabs [aria-selected="true"] {
-        background-color: white !important;
-        color: #00509d !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        color: #111827 !important;
+        border-bottom: 2px solid #2563eb !important;
+        background-color: transparent !important;
         font-weight: 600;
     }
 
-    /* Бейджи статусов */
-    .badge-success {
-        background-color: #def7ec;
-        color: #03543f;
-        padding: 4px 10px;
-        border-radius: 9999px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        display: inline-block;
+    /* Таблицы: чистые линии без лишней заливки */
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.9rem;
     }
-    .badge-warning {
-        background-color: #fef08a;
-        color: #713f12;
-        padding: 4px 10px;
-        border-radius: 9999px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        display: inline-block;
+    th {
+        border-bottom: 1px solid #e5e7eb !important;
+        color: #4b5563 !important;
+        font-weight: 600 !important;
+        padding: 10px !important;
+        background: #f9fafb !important;
     }
-
-    /* Кнопки */
-    .stButton>button {
-        background: linear-gradient(180deg, #0066cc 0%, #0052a3 100%);
-        color: white;
-        font-weight: 600;
-        border-radius: 10px;
-        padding: 10px 24px;
-        border: none;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 4px rgba(0,102,204,0.2);
-    }
-    .stButton>button:hover {
-        background: linear-gradient(180deg, #0052a3 0%, #003d7a 100%);
-        color: white;
-        box-shadow: 0 4px 8px rgba(0,102,204,0.3);
-        transform: translateY(-1px);
+    td {
+        border-bottom: 1px solid #f3f4f6 !important;
+        padding: 10px !important;
+        color: #1f2937 !important;
     }
 
-    /* Скрытие стандартного меню Streamlit для чистого вида */
+    /* Кнопки: плоский чистый стиль */
+    .stButton>button, .stDownloadButton>button {
+        background-color: #111827;
+        color: #ffffff;
+        border: 1px solid #111827;
+        border-radius: 6px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        padding: 7px 16px;
+        transition: all 0.15s ease;
+        box-shadow: none;
+    }
+    .stButton>button:hover, .stDownloadButton>button:hover {
+        background-color: #374151;
+        border-color: #374151;
+        color: #ffffff;
+    }
+
+    /* Убираем служебные элементы Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# ВЕРХНИЙ ХЕДЕР В СТИЛЕ СОВРЕМЕННОГО САЙТА
+# ХЕДЕР В СТИЛЕ МИНИМАЛИЗМА
 # -------------------------------------------------------------
 st.markdown("""
-<div class="hero-header">
-    <h1>🇨🇾 CyPass.cy — Калькулятор и аудит натурализации</h1>
-    <p>Проверка соответствия ст. 111B Закона о населении Кипра (M127), расчет 365-дневных окон и генерация официальных документов.</p>
+<div class="brand-header">
+    <div class="brand-title">
+        <span>🇨🇾 CyPass.cy</span>
+        <span style="font-size: 0.8rem; font-weight: 500; background: #eff6ff; color: #2563eb; padding: 2px 8px; border-radius: 4px;">M127 / Art. 111B</span>
+    </div>
+    <div class="brand-subtitle">Калькулятор периодов проживания на Кипре и генератор официальных заявлений в CRMD.</div>
 </div>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# НАВИГАЦИЯ ПО РАЗДЕЛАМ
+# ТАБЫ
 # -------------------------------------------------------------
 tab_calc, tab_check, tab_opt = st.tabs([
-    "📅 Калькулятор стажа и документы",
-    "📋 Чек-лист соответствия M127", 
-    "🎯 Оптимизатор «зеленых окон»"
+    "Калькулятор стажа",
+    "Чек-лист документов", 
+    "Оптимизатор даты"
 ])
 
 with tab_calc:
