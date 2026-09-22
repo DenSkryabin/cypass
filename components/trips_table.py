@@ -5,8 +5,8 @@ from core.doc_generator import generate_crmd_statements_docx
 
 def render_trips_input(calc_engine_func):
     """
-    Отрисовка реестра ВНЖ, таблицы поездок, расчета сценариев 
-    и блоков экспорта официальных документов CRMD.
+    Отрисовка реестра ВНЖ, динамического списка поездок (без вида Excel), 
+    расчета сценариев и блоков экспорта.
     """
     st.subheader("Реестр разрешений на проживание (Титулы / ВНЖ)")
     
@@ -20,6 +20,7 @@ def render_trips_input(calc_engine_func):
 
     col_v1, col_v2 = st.columns([3, 2])
     with col_v1:
+        # Для виз оставляем легкий редактор, так как это всего 5 компактных строк
         edited_visas = st.data_editor(visas_initial, num_rows="dynamic", width="stretch")
         
     with col_v2:
@@ -38,18 +39,10 @@ def render_trips_input(calc_engine_func):
         st.write(f"**Требуемый ценз присутствия:** {req_presence_days} дней")
 
     st.write("---")
-    st.subheader("Журнал поездок и непрерывного пребывания")
-    st.caption("Формат ввода дат: ДД.ММ.ГГГГ")
 
     # -------------------------------------------------------------
-    # 1. БЛОК ИМПОРТА EXCEL / CSV
+    # 1. ИНИЦИАЛИЗАЦИЯ ДАННЫХ В SESSION STATE
     # -------------------------------------------------------------
-    uploaded_file = st.file_uploader(
-        "📥 Быстрый импорт поездок (Excel .xlsx или .csv):", 
-        type=["xlsx", "csv"],
-        help="Загрузите файл с колонками: Arrival (прибытие), Departure (выезд) и Country (страна)"
-    )
-
     default_trips = [
         {"Arrival": datetime.date(2022, 5, 6), "Departure": datetime.date(2022, 5, 12), "Country": "Cyprus"},
         {"Arrival": datetime.date(2022, 8, 8), "Departure": datetime.date(2022, 11, 12), "Country": "Cyprus"},
@@ -96,53 +89,103 @@ def render_trips_input(calc_engine_func):
         {"Arrival": datetime.date(2026, 9, 20), "Departure": target_sub_date, "Country": "Cyprus"},
     ]
 
-    active_trips = default_trips
+    if "trips" not in st.session_state:
+        st.session_state.trips = default_trips.copy()
 
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                df_up = pd.read_csv(uploaded_file)
-            else:
-                df_up = pd.read_excel(uploaded_file)
-            
-            arr_col = next((c for c in df_up.columns if "arriv" in c.lower() or "въезд" in c.lower() or "прибыт" in c.lower()), None)
-            dep_col = next((c for c in df_up.columns if "depart" in c.lower() or "выезд" in c.lower() or "убыт" in c.lower()), None)
-            country_col = next((c for c in df_up.columns if "countr" in c.lower() or "стран" in c.lower()), None)
-
-            if arr_col and dep_col:
-                imported = []
-                for _, r in df_up.iterrows():
-                    arr_val = pd.to_datetime(r[arr_col], errors="coerce")
-                    dep_val = pd.to_datetime(r[dep_col], errors="coerce")
-                    if pd.notnull(arr_val) and pd.notnull(dep_val):
-                        imported.append({
-                            "Arrival": arr_val.date(),
-                            "Departure": dep_val.date(),
-                            "Country": str(r[country_col]) if country_col and pd.notnull(r[country_col]) else "Cyprus"
-                        })
-                if imported:
-                    active_trips = imported
-                    st.success(f"✅ Успешно импортировано {len(imported)} поездок из файла!")
-            else:
-                st.error("В файле не найдены колонки Arrival/Въезд и Departure/Выезд.")
-        except Exception as e:
-            st.error(f"Ошибка при чтении файла: {e}")
-
-    edited_trips = st.data_editor(
-        active_trips, 
-        num_rows="dynamic", 
-        width="stretch",
-        column_config={
-            "Arrival": st.column_config.DateColumn("Дата прибытия", format="DD/MM/YYYY"),
-            "Departure": st.column_config.DateColumn("Дата выезда", format="DD/MM/YYYY"),
-            "Country": st.column_config.TextColumn("Страна")
-        }
+    # -------------------------------------------------------------
+    # 2. ИМПОРТ ФАЙЛА (С ЗАЩИТОЙ ОТ ПЕРЕЗАГРУЗОК)
+    # -------------------------------------------------------------
+    uploaded_file = st.file_uploader(
+        "📥 Быстрый импорт поездок (Excel .xlsx или .csv):", 
+        type=["xlsx", "csv"],
+        help="Загрузите файл с колонками: Arrival (прибытие), Departure (выезд) и Country (страна)"
     )
 
+    if uploaded_file is not None:
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        if st.session_state.get("last_uploaded_id") != file_id:
+            try:
+                if uploaded_file.name.endswith(".csv"):
+                    df_up = pd.read_csv(uploaded_file)
+                else:
+                    df_up = pd.read_excel(uploaded_file)
+                
+                arr_col = next((c for c in df_up.columns if "arriv" in c.lower() or "въезд" in c.lower() or "прибыт" in c.lower()), None)
+                dep_col = next((c for c in df_up.columns if "depart" in c.lower() or "выезд" in c.lower() or "убыт" in c.lower()), None)
+                country_col = next((c for c in df_up.columns if "countr" in c.lower() or "стран" in c.lower()), None)
+
+                if arr_col and dep_col:
+                    imported = []
+                    for _, r in df_up.iterrows():
+                        arr_val = pd.to_datetime(r[arr_col], errors="coerce")
+                        dep_val = pd.to_datetime(r[dep_col], errors="coerce")
+                        if pd.notnull(arr_val) and pd.notnull(dep_val):
+                            imported.append({
+                                "Arrival": arr_val.date(),
+                                "Departure": dep_val.date(),
+                                "Country": str(r[country_col]) if country_col and pd.notnull(r[country_col]) else "Cyprus"
+                            })
+                    if imported:
+                        st.session_state.trips = imported
+                        st.session_state.last_uploaded_id = file_id
+                        st.success(f"✅ Успешно импортировано {len(imported)} поездок из файла!")
+                        st.rerun()
+                else:
+                    st.error("В файле не найдены колонки Arrival/Въезд и Departure/Выезд.")
+            except Exception as e:
+                st.error(f"Ошибка при чтении файла: {e}")
+
     # -------------------------------------------------------------
-    # 2. ВЫЗОВ МАТЕМАТИЧЕСКОГО ЯДРА
+    # 3. ДИНАМИЧЕСКИЙ СПИСОК ПОЕЗДОК (NO-EXCEL ВИД)
     # -------------------------------------------------------------
-    result = calc_engine_func(target_sub_date, edited_trips, arc_date_val, bcs_date_val)
+    st.markdown("##### ✈️ Журнал пребывания на Кипре")
+    st.caption("Укажите периоды вашего нахождения на территории Кипра. Каждая строка — период от въезда до выезда.")
+
+    # Шапка списка
+    hc1, hc2, hc3, hc4 = st.columns([3, 3, 3, 1])
+    hc1.markdown("<div style='font-size:0.8rem; color:#6b7280; font-weight:600;'>ВЪЕЗД (ARRIVAL)</div>", unsafe_allow_html=True)
+    hc2.markdown("<div style='font-size:0.8rem; color:#6b7280; font-weight:600;'>ВЫЕЗД (DEPARTURE)</div>", unsafe_allow_html=True)
+    hc3.markdown("<div style='font-size:0.8rem; color:#6b7280; font-weight:600;'>СТРАНА / МЕСТО</div>", unsafe_allow_html=True)
+
+    # Контейнер с прокруткой, чтобы список не растягивал страницу
+    trips_to_remove = []
+    with st.container(height=450):
+        for i, trip in enumerate(st.session_state.trips):
+            c1, c2, c3, c4 = st.columns([3, 3, 3, 1])
+            
+            # Поля ввода обновляют state "на лету" без лишних ярлыков
+            new_arr = c1.date_input(f"arr_{i}", value=trip["Arrival"], key=f"arr_key_{i}", format="DD/MM/YYYY", label_visibility="collapsed")
+            new_dep = c2.date_input(f"dep_{i}", value=trip["Departure"], key=f"dep_key_{i}", format="DD/MM/YYYY", label_visibility="collapsed")
+            new_ctr = c3.text_input(f"ctr_{i}", value=trip["Country"], key=f"ctr_key_{i}", label_visibility="collapsed")
+            
+            st.session_state.trips[i]["Arrival"] = new_arr
+            st.session_state.trips[i]["Departure"] = new_dep
+            st.session_state.trips[i]["Country"] = new_ctr
+            
+            # Кнопка удаления
+            if c4.button("✖", key=f"del_{i}", help="Удалить этот период"):
+                trips_to_remove.append(i)
+
+    # Логика удаления
+    if trips_to_remove:
+        for index in reversed(trips_to_remove):
+            st.session_state.trips.pop(index)
+        st.rerun()
+
+    # Кнопки управления списком
+    bc1, bc2, bc3 = st.columns([3, 3, 4])
+    if bc1.button("➕ Добавить период"):
+        last_d = st.session_state.trips[-1]["Departure"] if st.session_state.trips else datetime.date.today()
+        st.session_state.trips.append({"Arrival": last_d, "Departure": last_d, "Country": "Cyprus"})
+        st.rerun()
+    if bc2.button("🗑️ Очистить список"):
+        st.session_state.trips = []
+        st.rerun()
+
+    # -------------------------------------------------------------
+    # 4. ВЫЗОВ МАТЕМАТИЧЕСКОГО ЯДРА
+    # -------------------------------------------------------------
+    result = calc_engine_func(target_sub_date, st.session_state.trips, arc_date_val, bcs_date_val)
     
     if result:
         period_rows, presence_days, num_periods, excess_days, scen1_days = result
@@ -223,7 +266,7 @@ def render_trips_input(calc_engine_func):
         st.table(period_rows)
 
         # -------------------------------------------------------------
-        # 3. БЛОК ЭКСПОРТА В МИНИМАЛИСТИЧНОМ СТИЛЕ
+        # 5. БЛОК ЭКСПОРТА (CSV + DOCX)
         # -------------------------------------------------------------
         st.write("---")
         st.markdown("#### Экспорт данных и официальных бланков")
@@ -234,7 +277,7 @@ def render_trips_input(calc_engine_func):
             st.markdown("**Таблица поездок (CSV)**")
             st.caption("Резервная копия поездок. Можно загрузить обратно в калькулятор в любой момент через кнопку импорта.")
             
-            df_export = pd.DataFrame(edited_trips)
+            df_export = pd.DataFrame(st.session_state.trips)
             csv_data = df_export.to_csv(index=False).encode('utf-8')
             
             st.download_button(
@@ -254,7 +297,7 @@ def render_trips_input(calc_engine_func):
                 arc_number = st.text_input("Номер ARC:", value="XXX-XXXXX")
                 mp_number = st.text_input("Номер папки (MP):", value="AXX-XXXXX")
             
-            docx_file = generate_crmd_statements_docx(app_name, arc_number, mp_number, target_sub_date, edited_trips)
+            docx_file = generate_crmd_statements_docx(app_name, arc_number, mp_number, target_sub_date, st.session_state.trips)
             
             st.download_button(
                 label="Сгенерировать Statements 1 & 2 (.docx)",
@@ -264,6 +307,6 @@ def render_trips_input(calc_engine_func):
                 width="stretch"
             )
         
-        return edited_trips, target_sub_date, arc_date_val, bcs_date_val
+        return st.session_state.trips, target_sub_date, arc_date_val, bcs_date_val
     
     return None, target_sub_date, arc_date_val, bcs_date_val
