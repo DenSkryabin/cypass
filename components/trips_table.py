@@ -6,7 +6,7 @@ from core.doc_generator import generate_crmd_statements_docx
 def render_trips_input(calc_engine_func):
     """
     Отрисовка реестра ВНЖ, таблицы поездок, расчета сценариев 
-    и блоков экспорта официальных документов.
+    и блоков экспорта официальных документов CRMD.
     """
     st.subheader("Реестр разрешений на проживание (Титулы / ВНЖ)")
     
@@ -148,56 +148,56 @@ def render_trips_input(calc_engine_func):
         period_rows, presence_days, num_periods, excess_days, scen1_days = result
 
         st.write("---")
-        st.markdown("### 📊 Анализ готовности кейса")
+        st.markdown("#### Анализ стажа и готовности кейса")
 
         deficit = max(0, req_presence_days - presence_days)
         possible_date = target_sub_date + datetime.timedelta(days=deficit)
         safety_date = possible_date + datetime.timedelta(days=30)
 
-        # Стилизованные карточки показателей
+        # Легкие минималистичные карточки
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         
         with col_m1:
             st.markdown(f"""
-            <div class="custom-card">
-                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Физ. присутствие</div>
-                <div style="font-size: 1.8rem; font-weight: 700; color: #0f172a; margin: 4px 0;">{presence_days} дн.</div>
-                <div style="font-size: 0.85rem; color: {'#16a34a' if presence_days >= req_presence_days else '#dc2626'};">
-                    Цель: {req_presence_days} дн. ({'Достигнута' if presence_days >= req_presence_days else f'Дефицит {deficit} дн.'})
+            <div class="minimal-card">
+                <div class="minimal-card-label">Фактическое присутствие</div>
+                <div class="minimal-card-value">{presence_days} <span style="font-size: 1rem; font-weight: 400; color: #6b7280;">дн.</span></div>
+                <div class="minimal-card-sub" style="color: {'#059669' if presence_days >= req_presence_days else '#dc2626'};">
+                    Цель: {req_presence_days} дн. ({'Выполнено' if presence_days >= req_presence_days else f'Дефицит {deficit} дн.'})
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
         with col_m2:
             st.markdown(f"""
-            <div class="custom-card">
-                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Сценарий 1 (с зачетом 90 дн)</div>
-                <div style="font-size: 1.8rem; font-weight: 700; color: #0284c7; margin: 4px 0;">{scen1_days} дн.</div>
-                <div style="font-size: 0.85rem; color: #64748b;">Запас: +{scen1_days - req_presence_days} дн.</div>
+            <div class="minimal-card">
+                <div class="minimal-card-label">Сценарий 1 (с зачетом 90 дн)</div>
+                <div class="minimal-card-value">{scen1_days} <span style="font-size: 1rem; font-weight: 400; color: #6b7280;">дн.</span></div>
+                <div class="minimal-card-sub">Запас: +{scen1_days - req_presence_days} дн.</div>
             </div>
             """, unsafe_allow_html=True)
 
         with col_m3:
-            badge_color = "#16a34a" if excess_days == 0 else "#dc2626"
-            status_text = "0 дн. (В норме)" if excess_days == 0 else f"+{excess_days} дн. штрафа"
+            badge_text_color = "#059669" if excess_days == 0 else "#dc2626"
+            status_txt = "0 дн. (В норме)" if excess_days == 0 else f"+{excess_days} дн."
             st.markdown(f"""
-            <div class="custom-card">
-                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Превышения (>90 дн/год)</div>
-                <div style="font-size: 1.8rem; font-weight: 700; color: {badge_color}; margin: 4px 0;">{status_text}</div>
-                <div style="font-size: 0.85rem; color: #64748b;">Лимит: строго ≤ 90 дней</div>
+            <div class="minimal-card">
+                <div class="minimal-card-label">Превышения (&gt;90 дн/год)</div>
+                <div class="minimal-card-value" style="color: {badge_text_color};">{status_txt}</div>
+                <div class="minimal-card-sub">Лимит: строго &le; 90 дней</div>
             </div>
             """, unsafe_allow_html=True)
 
         with col_m4:
             st.markdown(f"""
-            <div class="custom-card">
-                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Дата с запасом (+30 дн)</div>
-                <div style="font-size: 1.8rem; font-weight: 700; color: #475569; margin: 4px 0;">{safety_date.strftime('%d.%m.%Y')}</div>
-                <div style="font-size: 0.85rem; color: #16a34a;">🛡️ Буфер безопасности</div>
+            <div class="minimal-card">
+                <div class="minimal-card-label">Буфер безопасности (+30 дн)</div>
+                <div class="minimal-card-value">{safety_date.strftime('%d.%m.%Y')}</div>
+                <div class="minimal-card-sub">Рекомендуемая дата подачи</div>
             </div>
             """, unsafe_allow_html=True)
 
-        st.markdown("#### Сравнение сценариев подачи:")
+        st.markdown("##### Сценарии подачи")
         st.table([
             {
                 "Сценарий": "Сценарий 1 (Зачет 90 дней отсутствия в год)", 
@@ -214,31 +214,31 @@ def render_trips_input(calc_engine_func):
             {
                 "Сценарий": "Сценарий с запасом безопасности (+30 дней)", 
                 "Дней": f"{presence_days + deficit + 30} дн.", 
-                "Готовность": "🛡️ Защита от споров с офицером миграции", 
+                "Готовность": "🛡️ Защита от споров с офицером", 
                 "Рекомендуемая дата": safety_date.strftime("%d.%m.%Y")
             },
         ])
 
-        st.markdown("#### Разбор 365-дневных окон:")
+        st.markdown("##### Детализация 365-дневных окон")
         st.table(period_rows)
 
         # -------------------------------------------------------------
-        # 3. БЛОК ЭКСПОРТА ОТЧЕТОВ И ОФИЦИАЛЬНЫХ ФОРМУЛЯРОВ
+        # 3. БЛОК ЭКСПОРТА В МИНИМАЛИСТИЧНОМ СТИЛЕ
         # -------------------------------------------------------------
         st.write("---")
-        st.subheader("📥 Экспорт данных и официальных формуляров")
+        st.markdown("#### Экспорт данных и официальных бланков")
         
         col_exp1, col_exp2 = st.columns(2)
         
         with col_exp1:
-            st.markdown("#### 1. Таблица поездок (CSV)")
-            st.caption("Файл для личного архива, который в любой момент можно загрузить обратно в калькулятор через кнопку импорта.")
+            st.markdown("**Таблица поездок (CSV)**")
+            st.caption("Резервная копия поездок. Можно загрузить обратно в калькулятор в любой момент через кнопку импорта.")
             
             df_export = pd.DataFrame(edited_trips)
             csv_data = df_export.to_csv(index=False).encode('utf-8')
             
             st.download_button(
-                label="📄 Скачать поездки в CSV",
+                label="Скачать CSV",
                 data=csv_data,
                 file_name=f"cyprus_trips_{target_sub_date.strftime('%Y%m%d')}.csv",
                 mime="text/csv",
@@ -246,18 +246,18 @@ def render_trips_input(calc_engine_func):
             )
 
         with col_exp2:
-            st.markdown("#### 2. Официальный формуляр CRMD (Word .docx)")
-            st.caption("Готовые Statement No. 1 и Statement No. 2 для подачи в миграционную службу Кипра по форме M127.")
+            st.markdown("**Официальные Statement 1 & 2 (.docx)**")
+            st.caption("Формуляры по стандарту CRMD с рассчитанными днями присутствия для заявления M127.")
             
-            with st.expander("Заполнить реквизиты заявителя перед скачиванием:"):
-                app_name = st.text_input("Имя и фамилия (латиницей, как в паспорте):", value="DENIS SKRYABIN")
+            with st.expander("Реквизиты заявителя (для шапки документа)"):
+                app_name = st.text_input("Имя и фамилия (латиницей):", value="DENIS SKRYABIN")
                 arc_number = st.text_input("Номер ARC:", value="XXX-XXXXX")
-                mp_number = st.text_input("Номер папки (MP / Family folder):", value="AXX-XXXXX")
+                mp_number = st.text_input("Номер папки (MP):", value="AXX-XXXXX")
             
             docx_file = generate_crmd_statements_docx(app_name, arc_number, mp_number, target_sub_date, edited_trips)
             
             st.download_button(
-                label="🏛️ Скачать Statements 1 & 2 (.docx)",
+                label="Сгенерировать Statements 1 & 2 (.docx)",
                 data=docx_file,
                 file_name=f"CRMD_Statements_1_2_{app_name.replace(' ', '_')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
