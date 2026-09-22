@@ -1,11 +1,12 @@
 import streamlit as st
 import datetime
 import pandas as pd
+from core.doc_generator import generate_crmd_statements_docx
 
 def render_trips_input(calc_engine_func):
     """
-    Отрисовка реестра ВНЖ, таблицы поездок и расчет результатов.
-    Параметр calc_engine_func передает функцию compute_engine из calculator.py.
+    Отрисовка реестра ВНЖ, таблицы поездок, расчета сценариев 
+    и блоков экспорта официальных документов.
     """
     st.subheader("Реестр разрешений на проживание (Титулы / ВНЖ)")
     
@@ -19,7 +20,6 @@ def render_trips_input(calc_engine_func):
 
     col_v1, col_v2 = st.columns([3, 2])
     with col_v1:
-        # Заменено use_container_width=True на width="stretch"
         edited_visas = st.data_editor(visas_initial, num_rows="dynamic", width="stretch")
         
     with col_v2:
@@ -33,7 +33,7 @@ def render_trips_input(calc_engine_func):
             format="DD/MM/YYYY"
         )
         req_presence_days = 1460 # 4 года суммарно (3 BCS + 1 год) при сертификате B1
-        st.write(f"**Дата ARC:** {arc_date_val.strftime('%d.%m.%Y')}")
+        st.write(f"**Дата отсчета (ARC):** {arc_date_val.strftime('%d.%m.%Y')}")
         st.write(f"**Старт списания 90 дней (BCS):** {bcs_date_val.strftime('%d.%m.%Y')}")
         st.write(f"**Требуемый ценз присутствия:** {req_presence_days} дней")
 
@@ -42,7 +42,7 @@ def render_trips_input(calc_engine_func):
     st.caption("Формат ввода дат: ДД.ММ.ГГГГ")
 
     # -------------------------------------------------------------
-    # БЛОК ИМПОРТА EXCEL / CSV
+    # 1. БЛОК ИМПОРТА EXCEL / CSV
     # -------------------------------------------------------------
     uploaded_file = st.file_uploader(
         "📥 Быстрый импорт поездок (Excel .xlsx или .csv):", 
@@ -105,7 +105,6 @@ def render_trips_input(calc_engine_func):
             else:
                 df_up = pd.read_excel(uploaded_file)
             
-            # Поиск колонок дат вне зависимости от регистра
             arr_col = next((c for c in df_up.columns if "arriv" in c.lower() or "въезд" in c.lower() or "прибыт" in c.lower()), None)
             dep_col = next((c for c in df_up.columns if "depart" in c.lower() or "выезд" in c.lower() or "убыт" in c.lower()), None)
             country_col = next((c for c in df_up.columns if "countr" in c.lower() or "стран" in c.lower()), None)
@@ -129,7 +128,6 @@ def render_trips_input(calc_engine_func):
         except Exception as e:
             st.error(f"Ошибка при чтении файла: {e}")
 
-    # Заменено use_container_width=True на width="stretch"
     edited_trips = st.data_editor(
         active_trips, 
         num_rows="dynamic", 
@@ -142,7 +140,7 @@ def render_trips_input(calc_engine_func):
     )
 
     # -------------------------------------------------------------
-    # РАСЧЕТ И ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ
+    # 2. ВЫЗОВ МАТЕМАТИЧЕСКОГО ЯДРА
     # -------------------------------------------------------------
     result = calc_engine_func(target_sub_date, edited_trips, arc_date_val, bcs_date_val)
     
@@ -150,23 +148,61 @@ def render_trips_input(calc_engine_func):
         period_rows, presence_days, num_periods, excess_days, scen1_days = result
 
         st.write("---")
-        st.subheader("Сценарии готовности к подаче (строки 68–74 Excel)")
+        st.markdown("### 📊 Анализ готовности кейса")
 
-        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        col_m1.metric("Фактическое присутствие", f"{presence_days} дн.", f"Норма: {req_presence_days} дн.")
-        col_m2.metric("Сценарий 1 (с зачетом 90 дн)", f"{scen1_days} дн.", f"Дельта: {scen1_days - req_presence_days} дн.")
-        col_m3.metric("Штрафные дни (>90 дн/год)", f"{excess_days} дн.")
-        
         deficit = max(0, req_presence_days - presence_days)
         possible_date = target_sub_date + datetime.timedelta(days=deficit)
         safety_date = possible_date + datetime.timedelta(days=30)
-        col_m4.metric("Дата с запасом (+30 дней)", safety_date.strftime("%d.%m.%Y"))
 
+        # Стилизованные карточки показателей
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        
+        with col_m1:
+            st.markdown(f"""
+            <div class="custom-card">
+                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Физ. присутствие</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: #0f172a; margin: 4px 0;">{presence_days} дн.</div>
+                <div style="font-size: 0.85rem; color: {'#16a34a' if presence_days >= req_presence_days else '#dc2626'};">
+                    Цель: {req_presence_days} дн. ({'Достигнута' if presence_days >= req_presence_days else f'Дефицит {deficit} дн.'})
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_m2:
+            st.markdown(f"""
+            <div class="custom-card">
+                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Сценарий 1 (с зачетом 90 дн)</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: #0284c7; margin: 4px 0;">{scen1_days} дн.</div>
+                <div style="font-size: 0.85rem; color: #64748b;">Запас: +{scen1_days - req_presence_days} дн.</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_m3:
+            badge_color = "#16a34a" if excess_days == 0 else "#dc2626"
+            status_text = "0 дн. (В норме)" if excess_days == 0 else f"+{excess_days} дн. штрафа"
+            st.markdown(f"""
+            <div class="custom-card">
+                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Превышения (>90 дн/год)</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: {badge_color}; margin: 4px 0;">{status_text}</div>
+                <div style="font-size: 0.85rem; color: #64748b;">Лимит: строго ≤ 90 дней</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_m4:
+            st.markdown(f"""
+            <div class="custom-card">
+                <div style="color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase;">Дата с запасом (+30 дн)</div>
+                <div style="font-size: 1.8rem; font-weight: 700; color: #475569; margin: 4px 0;">{safety_date.strftime('%d.%m.%Y')}</div>
+                <div style="font-size: 0.85rem; color: #16a34a;">🛡️ Буфер безопасности</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("#### Сравнение сценариев подачи:")
         st.table([
             {
                 "Сценарий": "Сценарий 1 (Зачет 90 дней отсутствия в год)", 
                 "Дней": f"{scen1_days} дн.", 
-                "Готовность": "✅ Условие выполнено" if scen1_days >= req_presence_days and excess_days == 0 else "⚠️ Требуется проверка периодов", 
+                "Готовность": "✅ Условие выполнено" if scen1_days >= req_presence_days and excess_days == 0 else "⚠️ Проверить периоды", 
                 "Рекомендуемая дата": target_sub_date.strftime("%d.%m.%Y")
             },
             {
@@ -178,13 +214,55 @@ def render_trips_input(calc_engine_func):
             {
                 "Сценарий": "Сценарий с запасом безопасности (+30 дней)", 
                 "Дней": f"{presence_days + deficit + 30} дн.", 
-                "Готовность": "🛡️ Защита от разночтений с офицером миграции", 
+                "Готовность": "🛡️ Защита от споров с офицером миграции", 
                 "Рекомендуемая дата": safety_date.strftime("%d.%m.%Y")
             },
         ])
 
         st.markdown("#### Разбор 365-дневных окон:")
         st.table(period_rows)
+
+        # -------------------------------------------------------------
+        # 3. БЛОК ЭКСПОРТА ОТЧЕТОВ И ОФИЦИАЛЬНЫХ ФОРМУЛЯРОВ
+        # -------------------------------------------------------------
+        st.write("---")
+        st.subheader("📥 Экспорт данных и официальных формуляров")
+        
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            st.markdown("#### 1. Таблица поездок (CSV)")
+            st.caption("Файл для личного архива, который в любой момент можно загрузить обратно в калькулятор через кнопку импорта.")
+            
+            df_export = pd.DataFrame(edited_trips)
+            csv_data = df_export.to_csv(index=False).encode('utf-8')
+            
+            st.download_button(
+                label="📄 Скачать поездки в CSV",
+                data=csv_data,
+                file_name=f"cyprus_trips_{target_sub_date.strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                width="stretch"
+            )
+
+        with col_exp2:
+            st.markdown("#### 2. Официальный формуляр CRMD (Word .docx)")
+            st.caption("Готовые Statement No. 1 и Statement No. 2 для подачи в миграционную службу Кипра по форме M127.")
+            
+            with st.expander("Заполнить реквизиты заявителя перед скачиванием:"):
+                app_name = st.text_input("Имя и фамилия (латиницей, как в паспорте):", value="DENIS SKRYABIN")
+                arc_number = st.text_input("Номер ARC:", value="XXX-XXXXX")
+                mp_number = st.text_input("Номер папки (MP / Family folder):", value="AXX-XXXXX")
+            
+            docx_file = generate_crmd_statements_docx(app_name, arc_number, mp_number, target_sub_date, edited_trips)
+            
+            st.download_button(
+                label="🏛️ Скачать Statements 1 & 2 (.docx)",
+                data=docx_file,
+                file_name=f"CRMD_Statements_1_2_{app_name.replace(' ', '_')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                width="stretch"
+            )
         
         return edited_trips, target_sub_date, arc_date_val, bcs_date_val
     
