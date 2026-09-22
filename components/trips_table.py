@@ -1,10 +1,10 @@
 import streamlit as st
 import datetime
+import pandas as pd
 
 def render_trips_input(calc_engine_func):
     """
     Отрисовка реестра ВНЖ, таблицы поездок и расчет результатов.
-    
     Параметр calc_engine_func передает функцию compute_engine из calculator.py.
     """
     st.subheader("Реестр разрешений на проживание (Титулы / ВНЖ)")
@@ -19,7 +19,9 @@ def render_trips_input(calc_engine_func):
 
     col_v1, col_v2 = st.columns([3, 2])
     with col_v1:
-        edited_visas = st.data_editor(visas_initial, num_rows="dynamic", use_container_width=True)
+        # Заменено use_container_width=True на width="stretch"
+        edited_visas = st.data_editor(visas_initial, num_rows="dynamic", width="stretch")
+        
     with col_v2:
         st.markdown("#### Параметры заявителя")
         arc_date_val = datetime.date(2022, 5, 6)
@@ -38,6 +40,15 @@ def render_trips_input(calc_engine_func):
     st.write("---")
     st.subheader("Журнал поездок и непрерывного пребывания")
     st.caption("Формат ввода дат: ДД.ММ.ГГГГ")
+
+    # -------------------------------------------------------------
+    # БЛОК ИМПОРТА EXCEL / CSV
+    # -------------------------------------------------------------
+    uploaded_file = st.file_uploader(
+        "📥 Быстрый импорт поездок (Excel .xlsx или .csv):", 
+        type=["xlsx", "csv"],
+        help="Загрузите файл с колонками: Arrival (прибытие), Departure (выезд) и Country (страна)"
+    )
 
     default_trips = [
         {"Arrival": datetime.date(2022, 5, 6), "Departure": datetime.date(2022, 5, 12), "Country": "Cyprus"},
@@ -85,10 +96,44 @@ def render_trips_input(calc_engine_func):
         {"Arrival": datetime.date(2026, 9, 20), "Departure": target_sub_date, "Country": "Cyprus"},
     ]
 
+    active_trips = default_trips
+
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith(".csv"):
+                df_up = pd.read_csv(uploaded_file)
+            else:
+                df_up = pd.read_excel(uploaded_file)
+            
+            # Поиск колонок дат вне зависимости от регистра
+            arr_col = next((c for c in df_up.columns if "arriv" in c.lower() or "въезд" in c.lower() or "прибыт" in c.lower()), None)
+            dep_col = next((c for c in df_up.columns if "depart" in c.lower() or "выезд" in c.lower() or "убыт" in c.lower()), None)
+            country_col = next((c for c in df_up.columns if "countr" in c.lower() or "стран" in c.lower()), None)
+
+            if arr_col and dep_col:
+                imported = []
+                for _, r in df_up.iterrows():
+                    arr_val = pd.to_datetime(r[arr_col], errors="coerce")
+                    dep_val = pd.to_datetime(r[dep_col], errors="coerce")
+                    if pd.notnull(arr_val) and pd.notnull(dep_val):
+                        imported.append({
+                            "Arrival": arr_val.date(),
+                            "Departure": dep_val.date(),
+                            "Country": str(r[country_col]) if country_col and pd.notnull(r[country_col]) else "Cyprus"
+                        })
+                if imported:
+                    active_trips = imported
+                    st.success(f"✅ Успешно импортировано {len(imported)} поездок из файла!")
+            else:
+                st.error("В файле не найдены колонки Arrival/Въезд и Departure/Выезд.")
+        except Exception as e:
+            st.error(f"Ошибка при чтении файла: {e}")
+
+    # Заменено use_container_width=True на width="stretch"
     edited_trips = st.data_editor(
-        default_trips, 
+        active_trips, 
         num_rows="dynamic", 
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Arrival": st.column_config.DateColumn("Дата прибытия", format="DD/MM/YYYY"),
             "Departure": st.column_config.DateColumn("Дата выезда", format="DD/MM/YYYY"),
@@ -96,7 +141,9 @@ def render_trips_input(calc_engine_func):
         }
     )
 
-    # Запуск расчёта через ядро
+    # -------------------------------------------------------------
+    # РАСЧЕТ И ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ
+    # -------------------------------------------------------------
     result = calc_engine_func(target_sub_date, edited_trips, arc_date_val, bcs_date_val)
     
     if result:
@@ -110,7 +157,6 @@ def render_trips_input(calc_engine_func):
         col_m2.metric("Сценарий 1 (с зачетом 90 дн)", f"{scen1_days} дн.", f"Дельта: {scen1_days - req_presence_days} дн.")
         col_m3.metric("Штрафные дни (>90 дн/год)", f"{excess_days} дн.")
         
-        # Расчет дефицита дней и защитного интервала (+30 дней)
         deficit = max(0, req_presence_days - presence_days)
         possible_date = target_sub_date + datetime.timedelta(days=deficit)
         safety_date = possible_date + datetime.timedelta(days=30)
